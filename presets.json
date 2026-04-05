@@ -2,10 +2,10 @@
   "default": {
     "name": "Default Layout",
     "facecam": {
-      "x": 1440,
+      "x": 0,
       "y": 0,
-      "w": 480,
-      "h": 270
+      "w": 342,
+      "h": 310
     },
     "gameplay": {
       "x": 420,

@@ -44,6 +44,10 @@
                         <div class="spinner" id="processingSpinner"></div>
                         <h2 id="statusText">Uploading...</h2>
                     </div>
+                    <div class="progress-info">
+                        <span id="progressPercent">0%</span>
+                        <span id="etaText"></span>
+                    </div>
                     <div class="progress-bar-container">
                         <div class="progress-bar" id="progressBar"></div>
                     </div>
@@ -54,6 +58,7 @@
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                     </div>
                     <h2>Video Ready!</h2>
+                    <p id="elapsedTimeDisplay" class="elapsed-text"></p>
                     <p>Your video has been cropped and stacked into a 9:16 vertical layout.</p>
                     <a id="downloadBtn" href="#" class="btn-primary" download>Download Output</a>
                     <button class="btn-secondary" id="resetBtn">Process Another</button>

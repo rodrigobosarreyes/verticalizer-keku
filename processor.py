@@ -1,6 +1,8 @@
 import subprocess
 import os
 import json
+import time
+import re
 
 def validate_media(input_path):
     """
@@ -13,8 +15,7 @@ def validate_media(input_path):
     cmd = [
         'ffprobe',
         '-v', 'error',
-        '-select_streams', 'v:0',
-        '-show_entries', 'stream=width,height,codec_name',
+        '-show_entries', 'format=duration:stream=width,height,codec_name',
         '-of', 'json',
         input_path
     ]
@@ -25,13 +26,20 @@ def validate_media(input_path):
         data = json.loads(result.stdout)
         if not data.get('streams'):
             raise ValueError("No video stream found in the file.")
-        return data['streams'][0]
+        
+        info = data['streams'][0]
+        # Duration can be in 'format' or 'streams'
+        duration = data.get('format', {}).get('duration')
+        if not duration and info.get('duration'):
+             duration = info.get('duration')
+        info['duration'] = float(duration) if duration else 0
+        return info
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Media validation failed. File may be corrupted or not a valid video. Details: {e.stderr}")
     except FileNotFoundError:
         raise RuntimeError("ffprobe executable not found! Please ensure FFmpeg is installed and added to your system PATH.")
 
-def process_video(input_path, output_path, preset):
+def process_video(input_path, output_path, preset, progress_callback=None):
     """
     Crops the facecam and gameplay regions defined in the preset, 
     scales them to 1080 width, pads the full canvas to 1080x1920 (9:16),
@@ -39,6 +47,7 @@ def process_video(input_path, output_path, preset):
     """
     # Validate the file first
     metadata = validate_media(input_path)
+    total_duration = metadata.get('duration', 0)
     
     fc = preset['facecam']
     gp = preset['gameplay']
@@ -61,7 +70,8 @@ def process_video(input_path, output_path, preset):
         f"[fc_crop]scale={target_w}:-1:flags=lanczos[fc_scale]; "
         f"[gp_crop]scale={target_w}:-1:flags=lanczos[gp_scale]; "
         f"[fc_scale][gp_scale]vstack=inputs=2[stacked]; "
-        f"[stacked]pad=width={target_w}:height={target_h}:x=(ow-iw)/2:y=(oh-ih)/2[out]"
+        f"[stacked]scale={target_w}:{target_h}:force_original_aspect_ratio=decrease[scaled_final]; "
+        f"[scaled_final]pad={target_w}:{target_h}:x=(ow-iw)/2:y=(oh-ih)/2[out]"
     )
     
     # Note on Dependencies/OS quirks: 
@@ -75,18 +85,45 @@ def process_video(input_path, output_path, preset):
         '-filter_complex', filtergraph,
         '-map', '[out]',    
         '-map', '0:a?',     # include audio from source if available
-        '-c:v', 'libx264',  # universal codec
-        '-preset', 'fast',  # fast processing for demo/local tool usage
-        '-crf', '23',       # standard reasonable quality
-        '-c:a', 'aac',      
-        '-b:a', '192k',
+        '-c:v', 'h264_amf', # AMD Hardware Acceleration
+        '-quality', 'speed',# AMD specific option for fastest processing
+        '-threads', '0',    # optimal multi-threading
+        '-c:a', 'copy',     # copy audio without re-encoding to save time
+        '-progress', 'pipe:1', # Output progress to stdout
         output_path
     ]
     
+    start_time = time.time()
     try:
-        # Running synchronously because it is already inside a background thread in app.py
-        subprocess.run(cmd, capture_output=True, text=True, check=True)
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"FFmpeg processing failed! \nStdErr: {e.stderr}")
+        # Running using Popen to capture real-time progress
+        # We merge stderr into stdout to ensure we catch all messages and prevent pipe blocking
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        
+        for line in process.stdout:
+            # With -progress pipe:1, ffmpeg prints key=value pairs
+            if 'out_time_ms=' in line:
+                try:
+                    time_ms = int(line.split('=')[1].strip())
+                    time_sec = time_ms / 1000000.0
+                    if total_duration > 0:
+                        progress = min(99, int((time_sec / total_duration) * 100))
+                        elapsed = time.time() - start_time
+                        
+                        # Simple ETA calculation
+                        if progress > 2: # Wait for some data to stabilize
+                            total_est = (elapsed / progress) * 100
+                            eta = max(0, int(total_est - elapsed))
+                        else:
+                            eta = 0
+                            
+                        if progress_callback:
+                            progress_callback(progress, eta)
+                except (ValueError, IndexError):
+                    pass
+
+        process.wait()
+        if process.returncode != 0:
+            raise RuntimeError(f"FFmpeg processing failed with exit code {process.returncode}.")
+            
     except FileNotFoundError:
         raise RuntimeError("ffmpeg executable not found! Please ensure FFmpeg is installed and added to your system PATH.")

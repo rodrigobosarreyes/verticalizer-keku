@@ -4,6 +4,7 @@ import json
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 import threading
+import time
 from processor import process_video
 
 app = Flask(__name__)
@@ -50,6 +51,8 @@ def upload_file():
         jobs[job_id] = {
             'status': 'processing',
             'progress': 0,
+            'eta': 0,
+            'start_time': time.time(),
             'output_url': None,
             'error': None
         }
@@ -68,11 +71,19 @@ def upload_file():
         return jsonify({'job_id': job_id})
 
 def run_processing_job(job_id, input_path, output_path, preset):
+    def progress_callback(progress, eta):
+        if job_id in jobs:
+            jobs[job_id]['progress'] = progress
+            jobs[job_id]['eta'] = eta
+
     try:
-        process_video(input_path, output_path, preset)
+        process_video(input_path, output_path, preset, progress_callback=progress_callback)
+        duration = time.time() - jobs[job_id]['start_time']
         jobs[job_id]['status'] = 'completed'
         jobs[job_id]['output_url'] = f"/download/{os.path.basename(output_path)}"
         jobs[job_id]['progress'] = 100
+        jobs[job_id]['eta'] = 0
+        jobs[job_id]['elapsed_seconds'] = int(duration)
     except Exception as e:
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)

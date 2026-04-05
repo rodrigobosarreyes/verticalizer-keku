@@ -11,7 +11,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Status elements
     const statusText = document.getElementById('statusText');
+    const progressPercent = document.getElementById('progressPercent');
+    const etaText = document.getElementById('etaText');
+    const progressBar = document.getElementById('progressBar');
     const downloadBtn = document.getElementById('downloadBtn');
+    const elapsedTimeDisplay = document.getElementById('elapsedTimeDisplay');
     
     let currentJobId = null;
     let pollInterval = null;
@@ -101,9 +105,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const data = await res.json();
                 
+                if (data.progress !== undefined) {
+                    progressPercent.textContent = `${data.progress}%`;
+                    progressBar.style.width = `${data.progress}%`;
+                }
+
+                if (data.eta > 0) {
+                    const minutes = Math.floor(data.eta / 60);
+                    const seconds = data.eta % 60;
+                    etaText.textContent = `Estimated time: ${minutes}m ${seconds}s`;
+                } else if (data.progress > 0) {
+                    etaText.textContent = `Finishing up...`;
+                }
+                
                 if (data.status === 'completed') {
                     clearInterval(pollInterval);
-                    showSuccess(data.output_url);
+                    showSuccess(data.output_url, data.elapsed_seconds);
                 } else if (data.status === 'failed') {
                     clearInterval(pollInterval);
                     showError(data.error);
@@ -111,13 +128,21 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (err) {
                 console.error("Polling error:", err);
             }
-        }, 2000);
+        }, 1000);
     }
 
-    function showSuccess(downloadUrl) {
+    function showSuccess(downloadUrl, seconds) {
         statusArea.classList.add('hidden');
         resultArea.classList.remove('hidden');
         downloadBtn.href = downloadUrl;
+        
+        if (seconds !== undefined) {
+             const mins = Math.floor(seconds / 60);
+             const secs = seconds % 60;
+             elapsedTimeDisplay.textContent = `Total Processing Time: ${mins}m ${secs}s`;
+        } else {
+             elapsedTimeDisplay.textContent = '';
+        }
     }
 
     function showError(message) {

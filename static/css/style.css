@@ -193,6 +193,24 @@ button:disabled {
     background-color: rgba(15, 23, 42, 0.8);
     border-radius: 4px;
     overflow: hidden;
+    margin-top: 0.5rem;
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+#progressPercent {
+    color: var(--gradient-start);
+}
+
+#etaText {
+    color: var(--text-muted);
+    font-weight: 400;
 }
 
 .progress-bar {
@@ -209,6 +227,13 @@ button:disabled {
 
 .success-icon {
     margin-bottom: 1rem;
+}
+
+.elapsed-text {
+    color: var(--gradient-start);
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 1.5rem;
 }
 
 #resultArea h2 {
