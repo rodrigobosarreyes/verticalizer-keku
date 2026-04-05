@@ -39,16 +39,19 @@ def validate_media(input_path):
     except FileNotFoundError:
         raise RuntimeError("ffprobe executable not found! Please ensure FFmpeg is installed and added to your system PATH.")
 
-def process_video(input_path, output_path, preset, start_s=0, end_s=0, progress_callback=None):
+def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_duration=None, apply_preset=True, progress_callback=None):
     """
-    Crops the facecam and gameplay regions defined in the preset, 
-    scales them to 1080 width, pads the full canvas to 1080x1920 (9:16),
-    and stacks them vertically using ffmpeg.
-    Supports trimming via start_s and end_s (in seconds).
+    If apply_preset is True: 
+       Crops the facecam and gameplay regions defined in the preset, 
+       scales them to 1080 width, pads the full canvas to 1080x1920 (9:16),
+       and stacks them vertically using ffmpeg.
+    If apply_preset is False:
+       Simply trims the video to the specified start_s and end_s using fast stream copy.
     """
-    # Validate the file first
-    metadata = validate_media(input_path)
-    total_duration = metadata.get('duration', 0)
+    # Validate the file first if duration is not provided
+    if total_duration is None:
+        metadata = validate_media(input_path)
+        total_duration = metadata.get('duration', 0)
     
     process_duration = total_duration
     if end_s > start_s:
@@ -92,18 +95,27 @@ def process_video(input_path, output_path, preset, start_s=0, end_s=0, progress_
     if end_s > start_s:
         cmd.extend(['-t', str(end_s - start_s)])
         
-    cmd.extend([
-        '-i', input_path,   
-        '-filter_complex', filtergraph,
-        '-map', '[out]',    
-        '-map', '0:a?',     # include audio from source if available
-        '-c:v', 'h264_amf', # AMD Hardware Acceleration
-        '-quality', 'speed',# AMD specific option for fastest processing
-        '-threads', '0',    # optimal multi-threading
-        '-c:a', 'copy',     # copy audio without re-encoding to save time
-        '-progress', 'pipe:1', # Output progress to stdout
-        output_path
-    ])
+    if apply_preset:
+        cmd.extend([
+            '-i', input_path,   
+            '-filter_complex', filtergraph,
+            '-map', '[out]',    
+            '-map', '0:a?',     # include audio from source if available
+            '-c:v', 'h264_amf', # AMD Hardware Acceleration
+            '-quality', 'speed',# AMD specific option for fastest processing
+            '-threads', '0',    # optimal multi-threading
+            '-c:a', 'copy',     # copy audio without re-encoding to save time
+            '-progress', 'pipe:1', # Output progress to stdout
+            output_path
+        ])
+    else:
+        cmd.extend([
+            '-i', input_path,   
+            '-c:v', 'copy',     # raw stream copy for blistering speed and original dimension
+            '-c:a', 'copy',     
+            '-progress', 'pipe:1',
+            output_path
+        ])
     
     start_time = time.time()
     try:

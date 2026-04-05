@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clips dynamic UI
     const clipsList = document.getElementById('clipsList');
     const addClipBtn = document.getElementById('addClipBtn');
+    const splitDurationParam = document.getElementById('splitDurationParam');
     
     function createClipRow() {
         const row = document.createElement('div');
@@ -40,13 +41,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return row;
     }
 
-    addClipBtn.addEventListener('click', () => {
-        clipsList.appendChild(createClipRow());
-    });
+    if (addClipBtn) {
+        addClipBtn.addEventListener('click', () => {
+            clipsList.appendChild(createClipRow());
+        });
+    }
 
-    // Helper: Convert "MM:SS" or "HH:MM:SS" or "SS" to total seconds
+    // Helper: Convert "MM:SS" or "HH:MM:SS" or "10m" or "600s" to total seconds
     function parseTimeToSeconds(timeStr) {
         if (!timeStr || timeStr.trim() === '') return 0;
+        timeStr = timeStr.trim().toLowerCase();
+        
+        // Handle suffix parsing (e.g. "10m" or "600s" or "1h")
+        if (timeStr.endsWith('h')) return parseFloat(timeStr) * 3600;
+        if (timeStr.endsWith('m')) return parseFloat(timeStr) * 60;
+        if (timeStr.endsWith('s')) return parseFloat(timeStr);
+        
+        // Handle MM:SS
         const parts = timeStr.split(':').map(Number);
         if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
         if (parts.length === 2) return parts[0] * 60 + parts[1];
@@ -94,21 +105,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const formData = new FormData(form);
         
-        // Parse segments
-        const sections = [];
-        document.querySelectorAll('.clip-row').forEach(row => {
-            const startStr = row.querySelector('.clip-start').value;
-            const endStr = row.querySelector('.clip-end').value;
-            if (startStr || endStr) {
-                 sections.push({
-                     start: parseTimeToSeconds(startStr),
-                     end: parseTimeToSeconds(endStr)
-                 });
+        // Parse segments or auto-split duration based on what page we're in
+        if (splitDurationParam) {
+            const timeStr = splitDurationParam.value;
+            const seconds = parseTimeToSeconds(timeStr);
+            if (seconds > 0) {
+                 formData.append('auto_split_duration', seconds);
             }
-        });
-        
-        if (sections.length > 0) {
-            formData.append('sections', JSON.stringify(sections));
+        } else if (clipsList) {
+            const sections = [];
+            document.querySelectorAll('.clip-row').forEach(row => {
+                const startStr = row.querySelector('.clip-start').value;
+                const endStr = row.querySelector('.clip-end').value;
+                if (startStr || endStr) {
+                     sections.push({
+                         start: parseTimeToSeconds(startStr),
+                         end: parseTimeToSeconds(endStr)
+                     });
+                }
+            });
+            
+            if (sections.length > 0) {
+                formData.append('sections', JSON.stringify(sections));
+            }
         }
         
         // Update UI
@@ -223,7 +242,8 @@ document.addEventListener('DOMContentLoaded', () => {
         fileInput.value = '';
         updateFileName();
         currentJobId = null;
-        clipsList.innerHTML = ''; // clear clips on reset
+        if (clipsList) clipsList.innerHTML = ''; // clear clips on reset
+        if (splitDurationParam) splitDurationParam.value = '';
     }
 
     document.getElementById('resetBtn').addEventListener('click', resetApp);
