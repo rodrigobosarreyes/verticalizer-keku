@@ -27,6 +27,15 @@
                         </select>
                     </div>
 
+                    <div class="form-group clips-section">
+                        <div class="clips-header">
+                            <label>Clips to Extract</label>
+                            <span class="hint">Leave empty to process full video</span>
+                        </div>
+                        <div id="clipsList"></div>
+                        <button type="button" class="btn-secondary add-clip-btn" id="addClipBtn">+ Add Clip</button>
+                    </div>
+
                     <div class="dropzone" id="dropzone">
                         <input type="file" id="file" name="file" accept="video/mp4,video/x-m4v,video/*" hidden>
                         <div class="upload-icon">
@@ -59,8 +68,8 @@
                     </div>
                     <h2>Video Ready!</h2>
                     <p id="elapsedTimeDisplay" class="elapsed-text"></p>
-                    <p>Your video has been cropped and stacked into a 9:16 vertical layout.</p>
-                    <a id="downloadBtn" href="#" class="btn-primary" download>Download Output</a>
+                    <p>Your video clips have been cropped and stacked into a 9:16 vertical layout.</p>
+                    <div id="downloadList" class="download-list"></div>
                     <button class="btn-secondary" id="resetBtn">Process Another</button>
                 </div>
                 

@@ -39,15 +39,22 @@ def validate_media(input_path):
     except FileNotFoundError:
         raise RuntimeError("ffprobe executable not found! Please ensure FFmpeg is installed and added to your system PATH.")
 
-def process_video(input_path, output_path, preset, progress_callback=None):
+def process_video(input_path, output_path, preset, start_s=0, end_s=0, progress_callback=None):
     """
     Crops the facecam and gameplay regions defined in the preset, 
     scales them to 1080 width, pads the full canvas to 1080x1920 (9:16),
     and stacks them vertically using ffmpeg.
+    Supports trimming via start_s and end_s (in seconds).
     """
     # Validate the file first
     metadata = validate_media(input_path)
     total_duration = metadata.get('duration', 0)
+    
+    process_duration = total_duration
+    if end_s > start_s:
+        process_duration = end_s - start_s
+    elif start_s > 0:
+        process_duration = total_duration - start_s if total_duration > start_s else 0
     
     fc = preset['facecam']
     gp = preset['gameplay']
@@ -78,9 +85,14 @@ def process_video(input_path, output_path, preset, progress_callback=None):
     # - `ffmpeg` must be globally accessible or absolute path provided here.
     # - Command structure works on both Windows and Linux out of the box because we provide 
     #   arguments as a list, which bypasses shell escaping issues.
-    cmd = [
-        'ffmpeg',
-        '-y',               
+    cmd = ['ffmpeg', '-y']
+    
+    if start_s > 0:
+        cmd.extend(['-ss', str(start_s)])
+    if end_s > start_s:
+        cmd.extend(['-t', str(end_s - start_s)])
+        
+    cmd.extend([
         '-i', input_path,   
         '-filter_complex', filtergraph,
         '-map', '[out]',    
@@ -91,7 +103,7 @@ def process_video(input_path, output_path, preset, progress_callback=None):
         '-c:a', 'copy',     # copy audio without re-encoding to save time
         '-progress', 'pipe:1', # Output progress to stdout
         output_path
-    ]
+    ])
     
     start_time = time.time()
     try:
@@ -105,8 +117,8 @@ def process_video(input_path, output_path, preset, progress_callback=None):
                 try:
                     time_ms = int(line.split('=')[1].strip())
                     time_sec = time_ms / 1000000.0
-                    if total_duration > 0:
-                        progress = min(99, int((time_sec / total_duration) * 100))
+                    if process_duration > 0:
+                        progress = min(99, int((time_sec / process_duration) * 100))
                         elapsed = time.time() - start_time
                         
                         # Simple ETA calculation

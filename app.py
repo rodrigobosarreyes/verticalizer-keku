@@ -47,13 +47,26 @@ def upload_file():
         
         file.save(input_path)
         
+        # Parse sections
+        sections_str = request.form.get('sections')
+        sections = []
+        if sections_str:
+            try:
+                sections = json.loads(sections_str)
+            except:
+                pass
+                
+        if not sections:
+            # Default to full video
+            sections = [{'start': 0, 'end': 0}]
+            
         # Initialize job state
         jobs[job_id] = {
             'status': 'processing',
             'progress': 0,
             'eta': 0,
             'start_time': time.time(),
-            'output_url': None,
+            'output_url': [],
             'error': None
         }
         
@@ -64,23 +77,41 @@ def upload_file():
         preset = presets.get(preset_id, presets['default'])
         
         # Start processing thread
-        thread = threading.Thread(target=run_processing_job, args=(job_id, input_path, output_path, preset))
+        thread = threading.Thread(target=run_processing_job, args=(job_id, input_path, preset, sections))
         thread.daemon = True
         thread.start()
         
         return jsonify({'job_id': job_id})
 
-def run_processing_job(job_id, input_path, output_path, preset):
-    def progress_callback(progress, eta):
-        if job_id in jobs:
-            jobs[job_id]['progress'] = progress
-            jobs[job_id]['eta'] = eta
-
+def run_processing_job(job_id, input_path, preset, sections):
+    total_clips = len(sections)
+    output_urls = []
+    
     try:
-        process_video(input_path, output_path, preset, progress_callback=progress_callback)
+        for idx, sec in enumerate(sections):
+            start_s = sec.get('start', 0)
+            end_s = sec.get('end', 0)
+            
+            output_filename = f"{job_id}_clip_{idx+1}.mp4"
+            output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+            
+            def progress_callback(progress, eta):
+                if job_id in jobs:
+                    # Overall progress logic
+                    overall_progress = int((idx * 100 + progress) / total_clips)
+                    jobs[job_id]['progress'] = overall_progress
+                    jobs[job_id]['eta'] = eta # ETA is naive per-clip in this implementation
+            
+            process_video(input_path, output_path, preset, start_s=start_s, end_s=end_s, progress_callback=progress_callback)
+            
+            output_urls.append({
+                'name': f"Clip {idx+1}",
+                'url': f"/download/{output_filename}"
+            })
+            
         duration = time.time() - jobs[job_id]['start_time']
         jobs[job_id]['status'] = 'completed'
-        jobs[job_id]['output_url'] = f"/download/{os.path.basename(output_path)}"
+        jobs[job_id]['output_url'] = output_urls
         jobs[job_id]['progress'] = 100
         jobs[job_id]['eta'] = 0
         jobs[job_id]['elapsed_seconds'] = int(duration)

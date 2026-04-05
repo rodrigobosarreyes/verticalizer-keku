@@ -19,6 +19,39 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let currentJobId = null;
     let pollInterval = null;
+    
+    // Clips dynamic UI
+    const clipsList = document.getElementById('clipsList');
+    const addClipBtn = document.getElementById('addClipBtn');
+    
+    function createClipRow() {
+        const row = document.createElement('div');
+        row.className = 'clip-row';
+        row.innerHTML = `
+            <input type="text" class="clip-start" placeholder="Start (e.g. 1:30)" title="Start Time">
+            <span>to</span>
+            <input type="text" class="clip-end" placeholder="End (e.g. 2:15)" title="End Time">
+            <button type="button" class="remove-clip-btn" title="Remove">&times;</button>
+        `;
+        
+        row.querySelector('.remove-clip-btn').addEventListener('click', () => {
+            row.remove();
+        });
+        return row;
+    }
+
+    addClipBtn.addEventListener('click', () => {
+        clipsList.appendChild(createClipRow());
+    });
+
+    // Helper: Convert "MM:SS" or "HH:MM:SS" or "SS" to total seconds
+    function parseTimeToSeconds(timeStr) {
+        if (!timeStr || timeStr.trim() === '') return 0;
+        const parts = timeStr.split(':').map(Number);
+        if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        if (parts.length === 2) return parts[0] * 60 + parts[1];
+        return isNaN(parts[0]) ? 0 : parts[0];
+    }
 
     // Drag and drop events
     dropzone.addEventListener('click', () => fileInput.click());
@@ -60,6 +93,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!fileInput.files[0]) return;
 
         const formData = new FormData(form);
+        
+        // Parse segments
+        const sections = [];
+        document.querySelectorAll('.clip-row').forEach(row => {
+            const startStr = row.querySelector('.clip-start').value;
+            const endStr = row.querySelector('.clip-end').value;
+            if (startStr || endStr) {
+                 sections.push({
+                     start: parseTimeToSeconds(startStr),
+                     end: parseTimeToSeconds(endStr)
+                 });
+            }
+        });
+        
+        if (sections.length > 0) {
+            formData.append('sections', JSON.stringify(sections));
+        }
         
         // Update UI
         form.classList.add('hidden');
@@ -131,10 +181,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
 
-    function showSuccess(downloadUrl, seconds) {
+    function showSuccess(downloadUrls, seconds) {
         statusArea.classList.add('hidden');
         resultArea.classList.remove('hidden');
-        downloadBtn.href = downloadUrl;
+        
+        const dlList = document.getElementById('downloadList');
+        dlList.innerHTML = ''; // clear
+        
+        if (Array.isArray(downloadUrls)) {
+            downloadUrls.forEach(urlObj => {
+                const btn = document.createElement('a');
+                btn.className = 'btn-primary';
+                btn.href = urlObj.url;
+                btn.download = '';
+                btn.textContent = `Download ${urlObj.name}`;
+                dlList.appendChild(btn);
+            });
+        }
         
         if (seconds !== undefined) {
              const mins = Math.floor(seconds / 60);
@@ -160,6 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fileInput.value = '';
         updateFileName();
         currentJobId = null;
+        clipsList.innerHTML = ''; // clear clips on reset
     }
 
     document.getElementById('resetBtn').addEventListener('click', resetApp);
