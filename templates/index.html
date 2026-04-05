@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VOD to TikTok Converter</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Load modern font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1 class="gradient-text">VOD Formatter</h1>
+            <p>Convert your horizontal streams into TikTok-ready vertical videos instantly.</p>
+        </header>
+
+        <main>
+            <div class="card">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="preset">Select Layout Preset</label>
+                        <select name="preset" id="preset">
+                            {% for preset_id, preset_data in presets.items() %}
+                                <option value="{{ preset_id }}">{{ preset_data.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="dropzone" id="dropzone">
+                        <input type="file" id="file" name="file" accept="video/mp4,video/x-m4v,video/*" hidden>
+                        <div class="upload-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        </div>
+                        <p class="dropzone-text">Drag & drop your VOD here, or <span class="highlight">browse</span></p>
+                        <p class="file-name" id="fileName"></p>
+                    </div>
+
+                    <button type="submit" id="submitBtn" disabled>Start Processing</button>
+                </form>
+
+                <div id="statusArea" class="hidden">
+                    <div class="status-indicator">
+                        <div class="spinner" id="processingSpinner"></div>
+                        <h2 id="statusText">Uploading...</h2>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                </div>
+
+                <div id="resultArea" class="hidden">
+                    <div class="success-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                    </div>
+                    <h2>Video Ready!</h2>
+                    <p>Your video has been cropped and stacked into a 9:16 vertical layout.</p>
+                    <a id="downloadBtn" href="#" class="btn-primary" download>Download Output</a>
+                    <button class="btn-secondary" id="resetBtn">Process Another</button>
+                </div>
+                
+                <div id="errorArea" class="hidden error-card">
+                    <h2 class="error-text">Processing Failed</h2>
+                    <p id="errorMsg"></p>
+                    <button class="btn-secondary" id="errorResetBtn">Try Again</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "default": {
+    "name": "Default Layout",
+    "facecam": {
+      "x": 1440,
+      "y": 0,
+      "w": 480,
+      "h": 270
+    },
+    "gameplay": {
+      "x": 420,
+      "y": 0,
+      "w": 1080,
+      "h": 1080
+    }
+  }
+}
