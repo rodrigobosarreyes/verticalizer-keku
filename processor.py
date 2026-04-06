@@ -31,7 +31,7 @@ def validate_media(input_path):
         # Duration can be in 'format' or 'streams'
         duration = data.get('format', {}).get('duration')
         if not duration and info.get('duration'):
-             duration = info.get('duration')
+            duration = info.get('duration')
         info['duration'] = float(duration) if duration else 0
         return info
     except subprocess.CalledProcessError as e:
@@ -39,7 +39,7 @@ def validate_media(input_path):
     except FileNotFoundError:
         raise RuntimeError("ffprobe executable not found! Please ensure FFmpeg is installed and added to your system PATH.")
 
-def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_duration=None, apply_preset=True, progress_callback=None):
+def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_duration=None, apply_preset=True, overlay_image=None, progress_callback=None):
     """
     If apply_preset is True: 
        Crops the facecam and gameplay regions defined in the preset, 
@@ -72,17 +72,33 @@ def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_dur
     # 3. scale facecam to target width -> [fc_scale]
     # 4. scale gameplay to target width -> [gp_scale]
     # 5. vstack (vertical stack) -> [stacked]
-    # 6. pad to exactly 1080x1920 -> [out]
+    # 6. (Optional) overlay image -> [overlaid]
+    # 7. pad to exactly 1080x1920 -> [out]
+    
+    # Calculate the junction point for the overlay (scaled gameplay height)
+    gp_h_scaled = int(target_w * (gp['h'] / gp['w']))
     
     filtergraph = (
         f"[0:v]crop=w={fc['w']}:h={fc['h']}:x={fc['x']}:y={fc['y']}[fc_crop]; "
         f"[0:v]crop=w={gp['w']}:h={gp['h']}:x={gp['x']}:y={gp['y']}[gp_crop]; "
         f"[fc_crop]scale={target_w}:-1:flags=lanczos[fc_scale]; "
         f"[gp_crop]scale={target_w}:-1:flags=lanczos[gp_scale]; "
-        f"[fc_scale][gp_scale]vstack=inputs=2[stacked]; "
-        f"[stacked]scale={target_w}:{target_h}:force_original_aspect_ratio=decrease[scaled_final]; "
-        f"[scaled_final]pad={target_w}:{target_h}:x=(ow-iw)/2:y=(oh-ih)/2[out]"
+        f"[gp_scale][fc_scale]vstack=inputs=2[stacked]"
     )
+    
+    if apply_preset and overlay_image and os.path.exists(overlay_image):
+        # We overlay the image in the top-left corner of the camera section (with 10px margin)
+        filtergraph += (
+            f"; [1:v]scale=-1:100[ov_scaled]; " # Slightly smaller scale
+            f"[stacked][ov_scaled]overlay=x=0:y={gp_h_scaled}[overlaid]; "
+            f"[overlaid]scale={target_w}:{target_h}:force_original_aspect_ratio=decrease[scaled_final]; "
+            f"[scaled_final]pad={target_w}:{target_h}:x=(ow-iw)/2:y=(oh-ih)/2[out]"
+        )
+    else:
+        filtergraph += (
+            f"; [stacked]scale={target_w}:{target_h}:force_original_aspect_ratio=decrease[scaled_final]; "
+            f"[scaled_final]pad={target_w}:{target_h}:x=(ow-iw)/2:y=(oh-ih)/2[out]"
+        )
     
     # Note on Dependencies/OS quirks: 
     # - `ffmpeg` must be globally accessible or absolute path provided here.
@@ -96,8 +112,11 @@ def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_dur
         cmd.extend(['-t', str(end_s - start_s)])
         
     if apply_preset:
+        cmd.extend(['-i', input_path])
+        if overlay_image and os.path.exists(overlay_image):
+            cmd.extend(['-i', overlay_image])
+            
         cmd.extend([
-            '-i', input_path,   
             '-filter_complex', filtergraph,
             '-map', '[out]',    
             '-map', '0:a?',     # include audio from source if available

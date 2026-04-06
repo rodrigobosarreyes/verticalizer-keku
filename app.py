@@ -141,7 +141,9 @@ def run_processing_job(job_id, input_path, preset, sections, auto_split_duration
             
             # Apply layout preset only if NOT an auto-split job
             apply_preset = not bool(auto_split_duration)
-            process_video(input_path, output_path, preset, start_s=start_s, end_s=end_s, total_duration=total_duration, apply_preset=apply_preset, progress_callback=progress_callback)
+            overlay_image = os.path.join(os.path.dirname(__file__), 'static', 'img', 'softie.png') if apply_preset else None
+            
+            process_video(input_path, output_path, preset, start_s=start_s, end_s=end_s, total_duration=total_duration, apply_preset=apply_preset, overlay_image=overlay_image, progress_callback=progress_callback)
             
             output_urls.append({
                 'name': f"Clip {idx+1}",
