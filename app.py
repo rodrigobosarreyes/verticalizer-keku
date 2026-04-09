@@ -128,8 +128,17 @@ def run_processing_job(job_id, input_path, preset, sections, auto_split_duration
         for idx, sec in enumerate(sections):
             start_s = sec.get('start', 0)
             end_s = sec.get('end', 0)
+            clip_name = sec.get('name', '').strip()
+            episode = sec.get('episode', None)
             
-            output_filename = f"{job_id}_clip_{idx+1}.mp4"
+            # Use clip name for filename if provided, otherwise default
+            if clip_name:
+                # Sanitize the clip name for use as filename
+                safe_clip_name = "".join(c for c in clip_name if c.isalnum() or c in (' ', '-', '_')).strip()
+                safe_clip_name = safe_clip_name.replace(' ', '_')
+                output_filename = f"{safe_clip_name}.mp4"
+            else:
+                output_filename = f"{job_id}_clip_{idx+1}.mp4"
             output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
             
             def progress_callback(progress, eta):
@@ -143,10 +152,11 @@ def run_processing_job(job_id, input_path, preset, sections, auto_split_duration
             apply_preset = not bool(auto_split_duration)
             overlay_image = os.path.join(os.path.dirname(__file__), 'static', 'img', 'softie.png') if apply_preset else None
             
-            process_video(input_path, output_path, preset, start_s=start_s, end_s=end_s, total_duration=total_duration, apply_preset=apply_preset, overlay_image=overlay_image, progress_callback=progress_callback)
+            process_video(input_path, output_path, preset, start_s=start_s, end_s=end_s, total_duration=total_duration, apply_preset=apply_preset, overlay_image=overlay_image, episode=episode, progress_callback=progress_callback)
             
+            display_name = clip_name if clip_name else f"Clip {idx+1}"
             output_urls.append({
-                'name': f"Clip {idx+1}",
+                'name': display_name,
                 'url': f"/download/{output_filename}"
             })
             

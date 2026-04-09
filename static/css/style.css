@@ -137,30 +137,71 @@ select:focus {
 }
 
 .clip-row {
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    transition: border-color 0.2s;
+}
+
+.clip-row:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.clip-row-top {
     display: flex;
     gap: 10px;
+    align-items: center;
     margin-bottom: 0.5rem;
+}
+
+.clip-row-top .clip-name {
+    flex: 2;
+}
+
+.clip-row-top .clip-episode {
+    flex: 1;
+    max-width: 110px;
+}
+
+.clip-row-bottom {
+    display: flex;
+    gap: 10px;
     align-items: center;
 }
 
 .clip-row input {
     width: 100%;
-    padding: 0.8rem;
+    padding: 0.7rem 0.8rem;
     background-color: rgba(15, 23, 42, 0.8);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     color: var(--text-main);
     font-family: inherit;
-    font-size: 1rem;
+    font-size: 0.95rem;
     outline: none;
+    transition: border-color 0.2s;
 }
 
 .clip-row input:focus {
     border-color: var(--primary);
 }
 
+.clip-row input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.clip-row input[type="number"]::-webkit-outer-spin-button,
+.clip-row input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
 .clip-row span {
     color: var(--text-muted);
+    flex-shrink: 0;
 }
 
 .remove-clip-btn {

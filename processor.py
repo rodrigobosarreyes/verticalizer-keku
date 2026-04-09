@@ -3,6 +3,8 @@ import os
 import json
 import time
 import re
+import tempfile
+from PIL import Image, ImageDraw, ImageFont
 
 def validate_media(input_path):
     """
@@ -39,7 +41,60 @@ def validate_media(input_path):
     except FileNotFoundError:
         raise RuntimeError("ffprobe executable not found! Please ensure FFmpeg is installed and added to your system PATH.")
 
-def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_duration=None, apply_preset=True, overlay_image=None, progress_callback=None):
+def generate_episode_overlay(episode_number, font_path):
+    """
+    Generates a PNG image with the episode number inside a rounded rectangle
+    with background color #c67ed0, white text, Sriracha font at size 62.
+    Returns the path to the temporary PNG file.
+    """
+    font_size = 62
+    try:
+        font = ImageFont.truetype(font_path, font_size)
+    except (IOError, OSError):
+        font = ImageFont.load_default()
+    
+    text = "ep" + str(episode_number).rjust(2, '0')
+    
+    # Measure text size
+    dummy_img = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+    dummy_draw = ImageDraw.Draw(dummy_img)
+    bbox = dummy_draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    
+    # Padding around the text
+    pad_x = 14
+    pad_y = 22
+    img_w = text_w + pad_x * 2
+    img_h = text_h + pad_y * 2
+    
+    # Border radius as 32% of the shorter dimension
+    radius = int(min(img_w, img_h) * 0.16)
+    
+    img = Image.new('RGBA', (img_w, img_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    # Draw rounded rectangle background
+    bg_color = (198, 126, 208, 255)  # #c67ed0
+    draw.rounded_rectangle(
+        [(0, 0), (img_w - 1, img_h - 1)],
+        radius=radius,
+        fill=bg_color
+    )
+    
+    # Draw text centered
+    text_x = (img_w - text_w) // 2 - bbox[0]
+    text_y = (img_h - text_h) // 2 - bbox[1]
+    draw.text((text_x, text_y), text, fill=(255, 255, 255, 255), font=font)
+    
+    # Save to temp file
+    tmp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+    tmp_path = tmp_file.name
+    tmp_file.close()
+    img.save(tmp_path, 'PNG')
+    return tmp_path
+
+def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_duration=None, apply_preset=True, overlay_image=None, episode=None, progress_callback=None):
     """
     If apply_preset is True: 
        Crops the facecam and gameplay regions defined in the preset, 
@@ -78,6 +133,12 @@ def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_dur
     # Calculate the junction point for the overlay (scaled gameplay height)
     gp_h_scaled = int(target_w * (gp['h'] / gp['w']))
     
+    # Generate episode overlay image if episode number is provided
+    episode_overlay_path = None
+    if episode is not None and apply_preset:
+        font_path = os.path.join(os.path.dirname(__file__), 'static', 'fonts', 'Sriracha-Regular.ttf')
+        episode_overlay_path = generate_episode_overlay(episode, font_path)
+    
     filtergraph = (
         f"[0:v]crop=w={fc['w']}:h={fc['h']}:x={fc['x']}:y={fc['y']}[fc_crop]; "
         f"[0:v]crop=w={gp['w']}:h={gp['h']}:x={gp['x']}:y={gp['y']}[gp_crop]; "
@@ -86,19 +147,41 @@ def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_dur
         f"[gp_scale][fc_scale]vstack=inputs=2[stacked]"
     )
     
+    # Track which input index the overlay images are at
+    next_input_idx = 1  # 0 is the video
+    softie_input_idx = None
+    episode_input_idx = None
+    
     if apply_preset and overlay_image and os.path.exists(overlay_image):
-        # We overlay the image in the top-left corner of the camera section (with 10px margin)
+        softie_input_idx = next_input_idx
+        next_input_idx += 1
+    
+    if episode_overlay_path:
+        episode_input_idx = next_input_idx
+        next_input_idx += 1
+    
+    # Build composite overlay chain
+    current_label = 'stacked'
+    
+    if softie_input_idx is not None:
         filtergraph += (
-            f"; [1:v]scale=-1:100[ov_scaled]; " # Slightly smaller scale
-            f"[stacked][ov_scaled]overlay=x=0:y={gp_h_scaled}[overlaid]; "
-            f"[overlaid]scale={target_w}:{target_h}:force_original_aspect_ratio=decrease[scaled_final]; "
-            f"[scaled_final]pad={target_w}:{target_h}:x=(ow-iw)/2:y=(oh-ih)/2[out]"
+            f"; [{softie_input_idx}:v]scale=-1:100[ov_scaled]; "
+            f"[{current_label}][ov_scaled]overlay=x=0:y={gp_h_scaled}[after_softie]"
         )
-    else:
+        current_label = 'after_softie'
+    
+    if episode_input_idx is not None:
+        # Position at top-right of camera scene (camera starts at gp_h_scaled)
+        # 15px margin from right edge and from top of camera
         filtergraph += (
-            f"; [stacked]scale={target_w}:{target_h}:force_original_aspect_ratio=decrease[scaled_final]; "
-            f"[scaled_final]pad={target_w}:{target_h}:x=(ow-iw)/2:y=(oh-ih)/2[out]"
+            f"; [{current_label}][{episode_input_idx}:v]overlay=x=W-w:y={gp_h_scaled}[after_episode]"
         )
+        current_label = 'after_episode'
+    
+    filtergraph += (
+        f"; [{current_label}]scale={target_w}:{target_h}:force_original_aspect_ratio=decrease[scaled_final]; "
+        f"[scaled_final]pad={target_w}:{target_h}:x=(ow-iw)/2:y=(oh-ih)/2[out]"
+    )
     
     # Note on Dependencies/OS quirks: 
     # - `ffmpeg` must be globally accessible or absolute path provided here.
@@ -113,8 +196,10 @@ def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_dur
         
     if apply_preset:
         cmd.extend(['-i', input_path])
-        if overlay_image and os.path.exists(overlay_image):
+        if softie_input_idx is not None:
             cmd.extend(['-i', overlay_image])
+        if episode_overlay_path:
+            cmd.extend(['-i', episode_overlay_path])
             
         cmd.extend([
             '-filter_complex', filtergraph,
@@ -170,3 +255,10 @@ def process_video(input_path, output_path, preset, start_s=0, end_s=0, total_dur
             
     except FileNotFoundError:
         raise RuntimeError("ffmpeg executable not found! Please ensure FFmpeg is installed and added to your system PATH.")
+    finally:
+        # Clean up temporary episode overlay
+        if episode_overlay_path and os.path.exists(episode_overlay_path):
+            try:
+                os.remove(episode_overlay_path)
+            except:
+                pass

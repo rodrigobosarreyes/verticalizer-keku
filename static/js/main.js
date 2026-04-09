@@ -4,11 +4,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileInput = document.getElementById('file');
     const fileNameDisplay = document.getElementById('fileName');
     const submitBtn = document.getElementById('submitBtn');
-    
+
     const statusArea = document.getElementById('statusArea');
     const resultArea = document.getElementById('resultArea');
     const errorArea = document.getElementById('errorArea');
-    
+
     // Status elements
     const statusText = document.getElementById('statusText');
     const progressPercent = document.getElementById('progressPercent');
@@ -16,25 +16,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressBar = document.getElementById('progressBar');
     const downloadBtn = document.getElementById('downloadBtn');
     const elapsedTimeDisplay = document.getElementById('elapsedTimeDisplay');
-    
+
     let currentJobId = null;
     let pollInterval = null;
-    
+
     // Clips dynamic UI
     const clipsList = document.getElementById('clipsList');
     const addClipBtn = document.getElementById('addClipBtn');
     const splitDurationParam = document.getElementById('splitDurationParam');
-    
+
     function createClipRow() {
         const row = document.createElement('div');
         row.className = 'clip-row';
         row.innerHTML = `
-            <input type="text" class="clip-start" placeholder="Start (e.g. 1:30)" title="Start Time">
-            <span>to</span>
-            <input type="text" class="clip-end" placeholder="End (e.g. 2:15)" title="End Time">
-            <button type="button" class="remove-clip-btn" title="Remove">&times;</button>
+            <div class="clip-row-top">
+                <input type="text" class="clip-name" placeholder="Clip name" title="Clip Name">
+                <input type="number" class="clip-episode" placeholder="Episode #" title="Episode Number" min="0">
+                <button type="button" class="remove-clip-btn" title="Remove">&times;</button>
+            </div>
+            <div class="clip-row-bottom">
+                <input type="text" class="clip-start" placeholder="Start (e.g. 1:30)" title="Start Time">
+                <span>to</span>
+                <input type="text" class="clip-end" placeholder="End (e.g. 2:15)" title="End Time">
+            </div>
         `;
-        
+
         row.querySelector('.remove-clip-btn').addEventListener('click', () => {
             row.remove();
         });
@@ -51,12 +57,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function parseTimeToSeconds(timeStr) {
         if (!timeStr || timeStr.trim() === '') return 0;
         timeStr = timeStr.trim().toLowerCase();
-        
+
         // Handle suffix parsing (e.g. "10m" or "600s" or "1h")
         if (timeStr.endsWith('h')) return parseFloat(timeStr) * 3600;
         if (timeStr.endsWith('m')) return parseFloat(timeStr) * 60;
         if (timeStr.endsWith('s')) return parseFloat(timeStr);
-        
+
         // Handle MM:SS
         const parts = timeStr.split(':').map(Number);
         if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -66,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Drag and drop events
     dropzone.addEventListener('click', () => fileInput.click());
-    
+
     dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropzone.classList.add('dragover');
@@ -79,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropzone.classList.remove('dragover');
-        
+
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             fileInput.files = e.dataTransfer.files;
             updateFileName();
@@ -104,32 +110,36 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!fileInput.files[0]) return;
 
         const formData = new FormData(form);
-        
+
         // Parse segments or auto-split duration based on what page we're in
         if (splitDurationParam) {
             const timeStr = splitDurationParam.value;
             const seconds = parseTimeToSeconds(timeStr);
             if (seconds > 0) {
-                 formData.append('auto_split_duration', seconds);
+                formData.append('auto_split_duration', seconds);
             }
         } else if (clipsList) {
             const sections = [];
             document.querySelectorAll('.clip-row').forEach(row => {
                 const startStr = row.querySelector('.clip-start').value;
                 const endStr = row.querySelector('.clip-end').value;
+                const clipName = row.querySelector('.clip-name').value.trim();
+                const clipEpisode = row.querySelector('.clip-episode').value.trim();
                 if (startStr || endStr) {
-                     sections.push({
-                         start: parseTimeToSeconds(startStr),
-                         end: parseTimeToSeconds(endStr)
-                     });
+                    sections.push({
+                        start: parseTimeToSeconds(startStr),
+                        end: parseTimeToSeconds(endStr),
+                        name: clipName || '',
+                        episode: clipEpisode ? parseInt(clipEpisode, 10) : null
+                    });
                 }
             });
-            
+
             if (sections.length > 0) {
                 formData.append('sections', JSON.stringify(sections));
             }
         }
-        
+
         // Update UI
         form.classList.add('hidden');
         statusArea.classList.remove('hidden');
@@ -138,8 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/upload', true);
-            
-            xhr.onload = function() {
+
+            xhr.onload = function () {
                 if (xhr.status >= 200 && xhr.status < 300) {
                     const response = JSON.parse(xhr.responseText);
                     currentJobId = response.job_id;
@@ -148,15 +158,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     let msg = 'Unknown error';
                     try {
                         msg = JSON.parse(xhr.responseText).error;
-                    } catch(e) {}
+                    } catch (e) { }
                     showError("Upload failed: " + msg);
                 }
             };
-            
-            xhr.onerror = function() {
+
+            xhr.onerror = function () {
                 showError("Network error during upload.");
             };
-            
+
             xhr.send(formData);
 
         } catch (error) {
@@ -166,14 +176,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function startPolling() {
         statusText.textContent = 'Processing (applying FFmpeg filters)...';
-        
+
         pollInterval = setInterval(async () => {
             try {
                 const res = await fetch(`/status/${currentJobId}`);
                 if (!res.ok) throw new Error("Failed to get status");
-                
+
                 const data = await res.json();
-                
+
                 if (data.progress !== undefined) {
                     progressPercent.textContent = `${data.progress}%`;
                     progressBar.style.width = `${data.progress}%`;
@@ -186,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (data.progress > 0) {
                     etaText.textContent = `Finishing up...`;
                 }
-                
+
                 if (data.status === 'completed') {
                     clearInterval(pollInterval);
                     showSuccess(data.output_url, data.elapsed_seconds);
@@ -203,10 +213,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function showSuccess(downloadUrls, seconds) {
         statusArea.classList.add('hidden');
         resultArea.classList.remove('hidden');
-        
+
         const dlList = document.getElementById('downloadList');
         dlList.innerHTML = ''; // clear
-        
+
         if (Array.isArray(downloadUrls)) {
             downloadUrls.forEach(urlObj => {
                 const btn = document.createElement('a');
@@ -217,13 +227,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 dlList.appendChild(btn);
             });
         }
-        
+
         if (seconds !== undefined) {
-             const mins = Math.floor(seconds / 60);
-             const secs = seconds % 60;
-             elapsedTimeDisplay.textContent = `Total Processing Time: ${mins}m ${secs}s`;
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            elapsedTimeDisplay.textContent = `Total Processing Time: ${mins}m ${secs}s`;
         } else {
-             elapsedTimeDisplay.textContent = '';
+            elapsedTimeDisplay.textContent = '';
         }
     }
 
